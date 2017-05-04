@@ -3,15 +3,16 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/dgryski/go-fuzzstr"
 	"math/rand"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/dgryski/go-fuzzstr"
 )
 
 type Instance struct {
@@ -167,8 +168,17 @@ func fetchInstances(config *aws.Config) []*Instance {
 		panic(err)
 	}
 
+	filters := []*ec2.Filter{
+		{
+			Name:   aws.String("instance-state-name"),
+			Values: []*string{aws.String("running"), aws.String("pending")},
+		},
+	}
+
 	svc := ec2.New(s, &aws.Config{})
-	resp, err := svc.DescribeInstances(nil)
+	resp, err := svc.DescribeInstances(&ec2.DescribeInstancesInput{
+		Filters: filters,
+	})
 	if err != nil {
 		panic(err)
 	}
