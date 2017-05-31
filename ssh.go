@@ -2,14 +2,15 @@ package main
 
 import (
 	"errors"
-	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/agent"
-	"golang.org/x/crypto/ssh/terminal"
 	"net"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 // Shell launches an interactive shell on the given client. It returns any
@@ -178,6 +179,7 @@ func sshClientConfig(user string) (*ssh.ClientConfig, error) {
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(signers...),
 		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 
 	return &cfg, nil
@@ -204,7 +206,7 @@ func timeoutSSHDial(dial func(chan error)) error {
 	go dial(echan)
 
 	select {
-	case <-time.After(time.Second):
+	case <-time.After(time.Second * 10):
 		return errors.New("timed out while initiating SSH connection")
 	case err = <-echan:
 		return err
