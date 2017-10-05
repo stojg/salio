@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/dgryski/go-fuzzstr"
+	"sort"
 )
 
 type Instance struct {
@@ -25,6 +26,7 @@ type Instance struct {
 	IsNat     bool
 	Cluster   string
 	Bastions  []*Instance
+	LaunchTime *time.Time
 }
 
 type JumpPath struct {
@@ -71,28 +73,24 @@ func main() {
 
 	instances := fetchInstances(config)
 
-	target := findInstanceName(searchTerm, instances)
+	targets := FindInstanceNames(searchTerm, instances)
 
-	candidates := findCandidates(target, instances)
+	candidates := JumpPaths(targets, instances)
 
 	if len(candidates) == 0 {
 		fmt.Println("No path found")
 		os.Exit(0)
 	}
 
-	for idx := range candidates {
-		fmt.Printf("%d. %s %s %s\n", idx+1, candidates[idx].Instance.ID, candidates[idx].Instance.Name, candidates[idx].Instance.PrivateIP)
+	for idx, c := range candidates {
+		fmt.Printf("%d. %s %s %s %s\n", idx+1, c.Instance.ID, c.Instance.Name, c.Instance.PrivateIP, c.Instance.LaunchTime.Local().Format("2006-01-02 15:04"))
 	}
 
-	serverIndex := "1"
+	fmt.Print("pick server # and then [enter] to continue: ")
+
 	reader := bufio.NewReader(os.Stdin)
-	if len(candidates) == 1 {
-		fmt.Print("[enter] to continue")
-		reader.ReadString('\n')
-	} else {
-		fmt.Print("pick server # and then [enter] to continue: ")
-		serverIndex, _ = reader.ReadString('\n')
-	}
+	serverIndex, _ := reader.ReadString('\n')
+
 	id, err := strconv.Atoi(strings.Replace(serverIndex, "\n", "", 1))
 	if err != nil {
 		fmt.Println(err)
@@ -118,10 +116,13 @@ func main() {
 	}
 }
 
-func findCandidates(target string, instances []*Instance) []*JumpPath {
-	s1 := rand.NewSource(time.Now().UnixNano())
-	random := rand.New(s1)
+// JumpPaths will take a target (an instance name) and a list of instances and return a jump path chain
+func JumpPaths(targets []string, instances []*Instance) []*JumpPath {
+	// randomise which bastion box to use
+	randSource := rand.NewSource(time.Now().UnixNano())
+	random := rand.New(randSource)
 	var candidates []*JumpPath
+	for _, target := range targets {
 	for _, instance := range instances {
 		if instance.Name != target {
 			continue
@@ -136,16 +137,14 @@ func findCandidates(target string, instances []*Instance) []*JumpPath {
 			Instance: instance,
 		})
 	}
+	}
 	return candidates
 }
 
-func findInstanceName(targetName string, instances []*Instance) string {
+// FindInstanceNames takes the users typed target name and finds real instance names from that
+func FindInstanceNames(targetName string, instances []*Instance) []string {
 
-	for _, i := range instances {
-		if i.Name == targetName {
-			return targetName
-		}
-	}
+	found := make(map[string]bool)
 
 	var instanceNames []string
 	for _, i := range instances {
@@ -155,9 +154,17 @@ func findInstanceName(targetName string, instances []*Instance) string {
 	fuzzIndex := fuzzstr.NewIndex(instanceNames)
 	postings := fuzzIndex.Query(targetName)
 	for i := 0; i < len(postings); i++ {
-		return instanceNames[postings[i].Doc]
+		name := instanceNames[postings[i].Doc]
+		found[name ] = true
 	}
-	return ""
+
+	var result []string
+	for name, _ := range found {
+		result = append(result, name)
+	}
+	sort.Sort(sort.StringSlice(result))
+
+	return result
 }
 
 func fetchInstances(config *aws.Config) []*Instance {
@@ -224,6 +231,8 @@ func NewInstance(inst *ec2.Instance) *Instance {
 	if inst.PublicIpAddress != nil {
 		i.PublicIP = *inst.PublicIpAddress
 	}
+
+	i.LaunchTime = inst.LaunchTime
 
 	for k := range inst.Tags {
 		i.Tags[*inst.Tags[k].Key] = *inst.Tags[k].Value
