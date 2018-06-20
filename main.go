@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -13,19 +14,18 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/dgryski/go-fuzzstr"
-	"sort"
 )
 
 type Instance struct {
-	ID        string
-	Name      string
-	Role      string
-	Tags      map[string]string
-	PublicIP  string
-	PrivateIP string
-	IsNat     bool
-	Cluster   string
-	Bastions  []*Instance
+	ID         string
+	Name       string
+	Role       string
+	Tags       map[string]string
+	PublicIP   string
+	PrivateIP  string
+	IsNat      bool
+	Cluster    string
+	Bastions   []*Instance
 	LaunchTime *time.Time
 }
 
@@ -123,20 +123,20 @@ func JumpPaths(targets []string, instances []*Instance) []*JumpPath {
 	random := rand.New(randSource)
 	var candidates []*JumpPath
 	for _, target := range targets {
-	for _, instance := range instances {
-		if instance.Name != target {
-			continue
+		for _, instance := range instances {
+			if instance.Name != target {
+				continue
+			}
+			if len(instance.Bastions) < 1 {
+				fmt.Printf("No bastion servers found for %s\n", instance.Name)
+				continue
+			}
+			index := random.Intn(len(instance.Bastions))
+			candidates = append(candidates, &JumpPath{
+				Bastion:  instance.Bastions[index],
+				Instance: instance,
+			})
 		}
-		if len(instance.Bastions) < 1 {
-			fmt.Printf("No bastion servers found for %s\n", instance.Name)
-			continue
-		}
-		index := random.Intn(len(instance.Bastions))
-		candidates = append(candidates, &JumpPath{
-			Bastion:  instance.Bastions[index],
-			Instance: instance,
-		})
-	}
 	}
 	return candidates
 }
@@ -155,7 +155,7 @@ func FindInstanceNames(targetName string, instances []*Instance) []string {
 	postings := fuzzIndex.Query(targetName)
 	for i := 0; i < len(postings); i++ {
 		name := instanceNames[postings[i].Doc]
-		found[name ] = true
+		found[name] = true
 	}
 
 	var result []string

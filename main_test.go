@@ -7,23 +7,23 @@ import (
 func TestFindCandidates(t *testing.T) {
 
 	bastion := &Instance{
-		ID        :"bastion1",
-		Name      :"bastion1",
-		Role      :"",
-		PublicIP  :"",
-		PrivateIP :"",
-		IsNat     :false,
-		Cluster   :"cluster1",
+		ID:        "bastion1",
+		Name:      "bastion1",
+		Role:      "",
+		PublicIP:  "",
+		PrivateIP: "",
+		IsNat:     false,
+		Cluster:   "cluster1",
 	}
 
 	server1 := &Instance{
-		ID        :"server1",
-		Name      :"server1",
-		Role      :"",
-		PublicIP  :"",
-		PrivateIP :"",
-		IsNat     :false,
-		Cluster   :"cluster1",
+		ID:        "server1",
+		Name:      "server1",
+		Role:      "",
+		PublicIP:  "",
+		PrivateIP: "",
+		IsNat:     false,
+		Cluster:   "cluster1",
 		Bastions:  []*Instance{bastion},
 	}
 
