@@ -16,7 +16,9 @@ import (
 	"github.com/dgryski/go-fuzzstr"
 )
 
-type Instance struct {
+const sshUserName = "admin"
+
+type instance struct {
 	ID         string
 	Name       string
 	Role       string
@@ -25,13 +27,13 @@ type Instance struct {
 	PrivateIP  string
 	IsNat      bool
 	Cluster    string
-	Bastions   []*Instance
+	Bastions   []*instance
 	LaunchTime *time.Time
 }
 
-type JumpPath struct {
-	Bastion  *Instance
-	Instance *Instance
+type instancePair struct {
+	Bastion  *instance
+	Instance *instance
 }
 
 /**
@@ -71,14 +73,18 @@ func main() {
 		config.Region = aws.String("ap-southeast-2")
 	}
 
-	instances := fetchInstances(config)
+	instances, err := fetchInstances(config)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error feting ec2 instances: %s\n", err.Error())
+		os.Exit(1)
+	}
 
-	targets := FindInstanceNames(searchTerm, instances)
+	targets := findInstanceNames(searchTerm, instances)
 
-	candidates := JumpPaths(targets, instances)
+	candidates := getCandidates(targets, instances)
 
 	if len(candidates) == 0 {
-		fmt.Println("No path found")
+		fmt.Println("No instances found")
 		os.Exit(0)
 	}
 
@@ -99,29 +105,29 @@ func main() {
 		fmt.Println("I cannot do that Dave.")
 		os.Exit(1)
 	}
-	id -= 1
+	id--
 
 	fmt.Printf("jumping to %s (%s) via %s (%s)\n\n", candidates[id].Instance.Name, candidates[id].Instance.PrivateIP, candidates[id].Bastion.Name, candidates[id].Bastion.PublicIP)
 
-	sshClient, err := NewTunnelledSSHClient("admin", candidates[id].Bastion.PublicIP, candidates[id].Instance.PrivateIP, true)
+	sshClient, err := newTunnelledSSHClient(sshUserName, candidates[id].Bastion.PublicIP, candidates[id].Instance.PrivateIP)
 	if err != nil {
-		fmt.Printf("%s", err)
+		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}
 
 	err = Shell(sshClient)
 	if err != nil {
-		fmt.Printf("%s", err)
+		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}
 }
 
-// JumpPaths will take a target (an instance name) and a list of instances and return a jump path chain
-func JumpPaths(targets []string, instances []*Instance) []*JumpPath {
+// getCandidates will take a target (an instance name) and a list of instances and return a jump path chain
+func getCandidates(targets []string, instances []*instance) []*instancePair {
 	// randomise which bastion box to use
 	randSource := rand.NewSource(time.Now().UnixNano())
 	random := rand.New(randSource)
-	var candidates []*JumpPath
+	var candidates []*instancePair
 	for _, target := range targets {
 		for _, instance := range instances {
 			if instance.Name != target {
@@ -132,7 +138,7 @@ func JumpPaths(targets []string, instances []*Instance) []*JumpPath {
 				continue
 			}
 			index := random.Intn(len(instance.Bastions))
-			candidates = append(candidates, &JumpPath{
+			candidates = append(candidates, &instancePair{
 				Bastion:  instance.Bastions[index],
 				Instance: instance,
 			})
@@ -141,10 +147,8 @@ func JumpPaths(targets []string, instances []*Instance) []*JumpPath {
 	return candidates
 }
 
-// FindInstanceNames takes the users typed target name and finds real instance names from that
-func FindInstanceNames(targetName string, instances []*Instance) []string {
-
-	found := make(map[string]bool)
+// findInstanceNames takes the users typed target name and finds real instance names from that
+func findInstanceNames(targetName string, instances []*instance) []string {
 
 	var instanceNames []string
 	for _, i := range instances {
@@ -153,27 +157,22 @@ func FindInstanceNames(targetName string, instances []*Instance) []string {
 
 	fuzzIndex := fuzzstr.NewIndex(instanceNames)
 	postings := fuzzIndex.Query(targetName)
-	for i := 0; i < len(postings); i++ {
-		name := instanceNames[postings[i].Doc]
-		found[name] = true
-	}
 
 	var result []string
-	for name, _ := range found {
+	for i := 0; i < len(postings); i++ {
+		name := instanceNames[postings[i].Doc]
 		result = append(result, name)
 	}
-	sort.Sort(sort.StringSlice(result))
 
+	sort.Sort(sort.StringSlice(result))
 	return result
 }
 
-func fetchInstances(config *aws.Config) []*Instance {
-	var instances []*Instance
+func fetchInstances(config *aws.Config) ([]*instance, error) {
+	var instances []*instance
 
-	s, err := session.NewSession(config)
-	if err != nil {
-		panic(err)
-	}
+	s := session.Must(session.NewSession(config))
+	svc := ec2.New(s, &aws.Config{})
 
 	filters := []*ec2.Filter{
 		{
@@ -182,24 +181,26 @@ func fetchInstances(config *aws.Config) []*Instance {
 		},
 	}
 
-	svc := ec2.New(s, &aws.Config{})
 	resp, err := svc.DescribeInstances(&ec2.DescribeInstancesInput{
 		Filters: filters,
 	})
 	if err != nil {
-		panic(err)
+		return instances, err
 	}
+
 	for idx := range resp.Reservations {
 		for _, inst := range resp.Reservations[idx].Instances {
-			i := NewInstance(inst)
+			i := newInstance(inst)
 			instances = append(instances, i)
 		}
 	}
+
 	// find the bastion for each instance that is in a private subnet
 	for _, i := range instances {
 		if i.IsNat {
 			continue
 		}
+		// find bastion instance for instances
 		for _, j := range instances {
 			if j.ID == i.ID {
 				continue
@@ -214,12 +215,12 @@ func fetchInstances(config *aws.Config) []*Instance {
 		}
 	}
 
-	return instances
+	return instances, nil
 }
 
-// NewInstance creates a new Instance struct from an AWS describeInstances call
-func NewInstance(inst *ec2.Instance) *Instance {
-	i := &Instance{
+// newInstance creates a new instance struct from an AWS describeInstances call
+func newInstance(inst *ec2.Instance) *instance {
+	i := &instance{
 		ID:   *inst.InstanceId,
 		Tags: make(map[string]string, 0),
 	}

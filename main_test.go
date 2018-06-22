@@ -6,7 +6,7 @@ import (
 
 func TestFindCandidates(t *testing.T) {
 
-	bastion := &Instance{
+	bastion := &instance{
 		ID:        "bastion1",
 		Name:      "bastion1",
 		Role:      "",
@@ -16,7 +16,7 @@ func TestFindCandidates(t *testing.T) {
 		Cluster:   "cluster1",
 	}
 
-	server1 := &Instance{
+	server1 := &instance{
 		ID:        "server1",
 		Name:      "server1",
 		Role:      "",
@@ -24,12 +24,12 @@ func TestFindCandidates(t *testing.T) {
 		PrivateIP: "",
 		IsNat:     false,
 		Cluster:   "cluster1",
-		Bastions:  []*Instance{bastion},
+		Bastions:  []*instance{bastion},
 	}
 
-	servers := []*Instance{server1}
+	servers := []*instance{server1}
 
-	paths := JumpPaths([]string{"server1"}, servers)
+	paths := getCandidates([]string{"server1"}, servers)
 
 	if len(paths) != 1 {
 		t.Errorf("Expected 1 jump path, got %d", len(paths))
