@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"sort"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -83,13 +84,15 @@ func main() {
 
 	candidates := getCandidates(targets, instances)
 
+	sort.Sort(candidateSort(candidates))
+
 	if len(candidates) == 0 {
 		fmt.Println("No instances found")
 		os.Exit(0)
 	}
 
 	for idx, c := range candidates {
-		fmt.Printf("%d. %s %s %s %s\n", idx+1, c.Instance.ID, c.Instance.Name, c.Instance.PrivateIP, c.Instance.LaunchTime.Local().Format("2006-01-02 15:04"))
+		fmt.Printf("%3d. %-19s %-30s %-15s %s\n", idx+1, c.Instance.ID, c.Instance.Name, c.Instance.PrivateIP, c.Instance.LaunchTime.Local().Format("2006-01-02 15:04"))
 	}
 
 	fmt.Print("pick server # and then [enter] to continue: ")
@@ -99,7 +102,8 @@ func main() {
 
 	id, err := strconv.Atoi(strings.Replace(serverIndex, "\n", "", 1))
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("I cannot do that Dave.")
+		os.Exit(1)
 	}
 	if id < 1 || id > len(candidates) {
 		fmt.Println("I cannot do that Dave.")
@@ -144,8 +148,24 @@ func getCandidates(targets []string, instances []*instance) []*instancePair {
 			})
 		}
 	}
+
 	return candidates
 }
+
+// sorts candidate by name first and then with launchtime
+type candidateSort []*instancePair
+
+func (p candidateSort) Len() int { return len(p) }
+func (p candidateSort) Less(i, j int) bool {
+	if p[i].Instance.Name < p[j].Instance.Name {
+		return true
+	}
+	if p[i].Instance.Name > p[j].Instance.Name {
+		return false
+	}
+	return p[i].Instance.LaunchTime.After(*p[j].Instance.LaunchTime)
+}
+func (p candidateSort) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
 
 // findInstanceNames takes the users typed target name and finds real instance names from that
 func findInstanceNames(targetName string, instances []*instance) []string {
@@ -158,14 +178,19 @@ func findInstanceNames(targetName string, instances []*instance) []string {
 	fuzzIndex := fuzzstr.NewIndex(instanceNames)
 	postings := fuzzIndex.Query(targetName)
 
-	var result []string
+	result := make(map[string]bool)
 	for i := 0; i < len(postings); i++ {
 		name := instanceNames[postings[i].Doc]
-		result = append(result, name)
+		result[name] = true
 	}
 
-	sort.Sort(sort.StringSlice(result))
-	return result
+	// convert back into a slice
+	var names []string
+	for name := range result {
+		names = append(names, name)
+	}
+
+	return names
 }
 
 func fetchInstances(config *aws.Config) ([]*instance, error) {
