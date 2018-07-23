@@ -19,6 +19,10 @@ import (
 
 const sshUserName = "admin"
 
+var (
+	version string
+)
+
 type instance struct {
 	ID         string
 	Name       string
@@ -43,7 +47,7 @@ type instancePair struct {
 func main() {
 
 	if len(os.Args) < 2 {
-		os.Exit(1)
+		printUsageAndQuit(1)
 	}
 
 	flags := make(map[string]string, 0)
@@ -53,6 +57,9 @@ func main() {
 
 	for i := 0; i < len(args); i++ {
 		if strings.HasPrefix(args[i], "-") {
+			if len(args) <= i+1 {
+				printUsageAndQuit(1)
+			}
 			flags[args[i]] = args[i+1]
 			i++
 		} else {
@@ -277,4 +284,10 @@ func newInstance(inst *ec2.Instance) *instance {
 		}
 	}
 	return i
+}
+
+func printUsageAndQuit(exitCode int) {
+	fmt.Printf("salio - ssh proxy (%s)\n", version)
+	fmt.Println("usage: salio -p playpen -r ap-southeast-2 cluster stack env")
+	os.Exit(exitCode)
 }
