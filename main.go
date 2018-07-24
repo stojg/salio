@@ -98,8 +98,15 @@ func main() {
 		os.Exit(0)
 	}
 
+	longestName := 0
+	for _, c := range candidates {
+		if len(c.Instance.Name) > longestName {
+			longestName = len(c.Instance.Name)
+		}
+	}
+
 	for idx, c := range candidates {
-		fmt.Printf("%3d. %-19s %-30s %-15s %s\n", idx+1, c.Instance.ID, c.Instance.Name, c.Instance.PrivateIP, c.Instance.LaunchTime.Local().Format("2006-01-02 15:04"))
+		fmt.Printf("%3d. %-19s %s %-15s %s\n", idx+1, c.Instance.ID, padToLen(c.Instance.Name, " ", longestName), c.Instance.PrivateIP, c.Instance.LaunchTime.Local().Format("2006-01-02 15:04"))
 	}
 
 	fmt.Print("pick server # and then [enter] to continue: ")
@@ -198,6 +205,12 @@ func findInstanceNames(targetName string, instances []*instance) []string {
 	}
 
 	return names
+}
+
+func padToLen(s string, padStr string, overallLen int) string {
+	var padCountInt = 1 + ((overallLen - len(padStr)) / len(padStr))
+	var retStr = s + strings.Repeat(padStr, padCountInt)
+	return retStr[:overallLen]
 }
 
 func fetchInstances(config *aws.Config) ([]*instance, error) {
