@@ -83,7 +83,7 @@ func main() {
 
 	instances, err := fetchInstances(config)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error feting ec2 instances: %s\n", err.Error())
+		fmt.Fprintf(os.Stderr, "Error fetching ec2 instances: %s\n", err.Error())
 		os.Exit(1)
 	}
 
