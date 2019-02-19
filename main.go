@@ -96,8 +96,31 @@ func main() {
 	if len(candidates) == 0 {
 		fmt.Println("No instances found")
 		os.Exit(0)
+	} 
+	
+	_, autojump := flags["--auto-jump"]
+	candidate := candidates[0]
+	if (!autojump || len(candidates) > 1) {
+		candidate = chooseCandidate(candidates)
 	}
 
+	fmt.Printf("jumping to %s (%s) via %s (%s)\n\n", candidate.Instance.Name, candidate.Instance.PrivateIP, candidate.Bastion.Name, candidate.Bastion.PublicIP)
+
+	sshClient, err := newTunnelledSSHClient(sshUserName, candidate.Bastion.PublicIP, candidate.Instance.PrivateIP)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
+
+	err = Shell(sshClient)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
+}
+
+// Prompts the user to choose which target to SSH into
+func chooseCandidate(candidates []*instancePair) *instancePair {
 	longestName := 0
 	for _, c := range candidates {
 		if len(c.Instance.Name) > longestName {
@@ -125,19 +148,7 @@ func main() {
 	}
 	id--
 
-	fmt.Printf("jumping to %s (%s) via %s (%s)\n\n", candidates[id].Instance.Name, candidates[id].Instance.PrivateIP, candidates[id].Bastion.Name, candidates[id].Bastion.PublicIP)
-
-	sshClient, err := newTunnelledSSHClient(sshUserName, candidates[id].Bastion.PublicIP, candidates[id].Instance.PrivateIP)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s\n", err)
-		os.Exit(1)
-	}
-
-	err = Shell(sshClient)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s\n", err)
-		os.Exit(1)
-	}
+	return candidates[id]
 }
 
 // getCandidates will take a target (an instance name) and a list of instances and return a jump path chain
@@ -301,6 +312,6 @@ func newInstance(inst *ec2.Instance) *instance {
 
 func printUsageAndQuit(exitCode int) {
 	fmt.Printf("salio - ssh proxy (%s)\n", version)
-	fmt.Println("usage: salio -p playpen -r ap-southeast-2 cluster stack env")
+	fmt.Println("usage: salio [--auto-jump true] -p playpen -r ap-southeast-2 cluster stack env")
 	os.Exit(exitCode)
 }
