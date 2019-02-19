@@ -98,8 +98,9 @@ func main() {
 		os.Exit(0)
 	} 
 	
+	_, autojump := flags["--auto-jump"]
 	candidate := candidates[0]
-	if (len(candidates) > 1) {
+	if (!autojump || len(candidates) > 1) {
 		candidate = chooseCandidate(candidates)
 	}
 
@@ -311,6 +312,6 @@ func newInstance(inst *ec2.Instance) *instance {
 
 func printUsageAndQuit(exitCode int) {
 	fmt.Printf("salio - ssh proxy (%s)\n", version)
-	fmt.Println("usage: salio -p playpen -r ap-southeast-2 cluster stack env")
+	fmt.Println("usage: salio [--auto-jump true] -p playpen -r ap-southeast-2 cluster stack env")
 	os.Exit(exitCode)
 }
