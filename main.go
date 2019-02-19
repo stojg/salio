@@ -96,8 +96,30 @@ func main() {
 	if len(candidates) == 0 {
 		fmt.Println("No instances found")
 		os.Exit(0)
+	} 
+	
+	candidate := candidates[0]
+	if (len(candidates) > 1) {
+		candidate = chooseCandidate(candidates)
 	}
 
+	fmt.Printf("jumping to %s (%s) via %s (%s)\n\n", candidate.Instance.Name, candidate.Instance.PrivateIP, candidate.Bastion.Name, candidate.Bastion.PublicIP)
+
+	sshClient, err := newTunnelledSSHClient(sshUserName, candidate.Bastion.PublicIP, candidate.Instance.PrivateIP)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
+
+	err = Shell(sshClient)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
+}
+
+// Prompts the user to choose which target to SSH into
+func chooseCandidate(candidates []*instancePair) *instancePair {
 	longestName := 0
 	for _, c := range candidates {
 		if len(c.Instance.Name) > longestName {
@@ -125,19 +147,7 @@ func main() {
 	}
 	id--
 
-	fmt.Printf("jumping to %s (%s) via %s (%s)\n\n", candidates[id].Instance.Name, candidates[id].Instance.PrivateIP, candidates[id].Bastion.Name, candidates[id].Bastion.PublicIP)
-
-	sshClient, err := newTunnelledSSHClient(sshUserName, candidates[id].Bastion.PublicIP, candidates[id].Instance.PrivateIP)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s\n", err)
-		os.Exit(1)
-	}
-
-	err = Shell(sshClient)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s\n", err)
-		os.Exit(1)
-	}
+	return candidates[id]
 }
 
 // getCandidates will take a target (an instance name) and a list of instances and return a jump path chain
