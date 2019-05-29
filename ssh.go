@@ -12,7 +12,7 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 )
 
-func newTunnelledSSHClient(user, tunnelAddress, targetAddress string) (*sshForwardingClient, error) {
+func newTunnelledSSHClient(tunnelUser, targetUser, tunnelAddress, targetAddress string) (*sshForwardingClient, error) {
 	tunnelAddress = maybeAddDefaultPort(tunnelAddress)
 	targetAddress = maybeAddDefaultPort(targetAddress)
 
@@ -27,7 +27,7 @@ func newTunnelledSSHClient(user, tunnelAddress, targetAddress string) (*sshForwa
 	}
 
 	clientConfig := &ssh.ClientConfig{
-		User: user,
+		User: tunnelUser,
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(signers...),
 		},
@@ -57,6 +57,8 @@ func newTunnelledSSHClient(user, tunnelAddress, targetAddress string) (*sshForwa
 	if err = timeoutSSHDial(dialFunc); err != nil {
 		return nil, err
 	}
+
+	clientConfig.User = targetUser
 
 	conn, chans, reqs, err := ssh.NewClientConn(targetConn, targetAddress, clientConfig)
 	if err != nil {
