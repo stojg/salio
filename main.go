@@ -17,7 +17,7 @@ import (
 	"github.com/dgryski/go-fuzzstr"
 )
 
-const sshUserName = "admin"
+const defaultSSHUserName = "admin"
 
 var (
 	version string
@@ -106,7 +106,17 @@ func main() {
 
 	fmt.Printf("jumping to %s (%s) via %s (%s)\n\n", candidate.Instance.Name, candidate.Instance.PrivateIP, candidate.Bastion.Name, candidate.Bastion.PublicIP)
 
-	sshClient, err := newTunnelledSSHClient(sshUserName, candidate.Bastion.PublicIP, candidate.Instance.PrivateIP)
+	bastionUser := defaultSSHUserName
+	if val, ok := flags["--bastion-user"]; ok {
+		bastionUser = val
+	}
+
+	instanceUser := defaultSSHUserName
+	if val, ok := flags["--instance-user"]; ok {
+		instanceUser = val
+	}
+
+	sshClient, err := newTunnelledSSHClient(bastionUser, instanceUser, candidate.Bastion.PublicIP, candidate.Instance.PrivateIP)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
@@ -312,6 +322,6 @@ func newInstance(inst *ec2.Instance) *instance {
 
 func printUsageAndQuit(exitCode int) {
 	fmt.Printf("salio - ssh proxy (%s)\n", version)
-	fmt.Println("usage: salio [--auto-jump true] -p playpen -r ap-southeast-2 cluster stack env")
+	fmt.Println("usage: salio [--auto-jump true] [--bastion-user admin] [--instance-user admin] -p playpen -r ap-southeast-2 cluster stack env")
 	os.Exit(exitCode)
 }
