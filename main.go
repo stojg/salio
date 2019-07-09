@@ -17,7 +17,10 @@ import (
 	"github.com/dgryski/go-fuzzstr"
 )
 
-const defaultSSHUserName = "admin"
+const (
+	defaultBastionUserName = "ubuntu"
+	defaultSSHUserName     = "admin"
+)
 
 var (
 	version string
@@ -96,17 +99,15 @@ func main() {
 	if len(candidates) == 0 {
 		fmt.Println("No instances found")
 		os.Exit(0)
-	} 
-	
+	}
+
 	_, autojump := flags["--auto-jump"]
 	candidate := candidates[0]
-	if (!autojump || len(candidates) > 1) {
+	if !autojump || len(candidates) > 1 {
 		candidate = chooseCandidate(candidates)
 	}
 
-	fmt.Printf("jumping to %s (%s) via %s (%s)\n\n", candidate.Instance.Name, candidate.Instance.PrivateIP, candidate.Bastion.Name, candidate.Bastion.PublicIP)
-
-	bastionUser := defaultSSHUserName
+	bastionUser := defaultBastionUserName
 	if val, ok := flags["--bastion-user"]; ok {
 		bastionUser = val
 	}
@@ -115,6 +116,8 @@ func main() {
 	if val, ok := flags["--instance-user"]; ok {
 		instanceUser = val
 	}
+
+	fmt.Printf("jumping to %s (%s@%s) via %s (%s@%s)\n\n", candidate.Instance.Name, instanceUser, candidate.Instance.PrivateIP, candidate.Bastion.Name, bastionUser, candidate.Bastion.PublicIP)
 
 	sshClient, err := newTunnelledSSHClient(bastionUser, instanceUser, candidate.Bastion.PublicIP, candidate.Instance.PrivateIP)
 	if err != nil {
