@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"math/rand"
 	"os"
@@ -20,6 +21,8 @@ import (
 const (
 	defaultBastionUserName = "ubuntu"
 	defaultSSHUserName     = "admin"
+	UbuntuUser             = "ubuntu"
+	DebianUser             = "admin"
 )
 
 var (
@@ -49,34 +52,27 @@ type instancePair struct {
  */
 func main() {
 
+	profile := flag.String("p", os.Getenv("AWS_PROFILE"), "AWS profile to use")
+	region := flag.String("r", os.Getenv("AWS_REGION"), "AWS region to use")
+	autoJump := flag.Bool("auto-jump", false, "automatically connect if only one server is found")
+	bastionUser := flag.String("bastion-user", defaultBastionUserName, "SSH user for bastions")
+	instanceUser := flag.String("instance-user", "", "SSH user for instances")
+
+	flag.Parse()
 	if len(os.Args) < 2 {
 		printUsageAndQuit(1)
 	}
 
-	flags := make(map[string]string, 0)
-	var searchTerms []string
+	searchTerm := strings.Join(flag.Args(), ".")
 
-	args := os.Args[1:]
-
-	for i := 0; i < len(args); i++ {
-		if strings.HasPrefix(args[i], "-") {
-			if len(args) <= i+1 {
-				printUsageAndQuit(1)
-			}
-			flags[args[i]] = args[i+1]
-			i++
-		} else {
-			searchTerms = append(searchTerms, args[i])
-		}
-	}
-	searchTerm := strings.Join(searchTerms, ".")
-
-	if val, ok := flags["-p"]; ok {
-		os.Setenv("AWS_PROFILE", val)
+	if err := os.Setenv("AWS_PROFILE", *profile); err != nil {
+		fmt.Fprintf(os.Stderr, "Error setting ENV var 'AWS_PROFILE': %s", err)
+		os.Exit(1)
 	}
 
-	if val, ok := flags["-r"]; ok {
-		os.Setenv("AWS_REGION", val)
+	if err := os.Setenv("AWS_REGION", *region); err != nil {
+		fmt.Fprintf(os.Stderr, "Error setting ENV var 'AWS_REGION': %s", err)
+		os.Exit(1)
 	}
 
 	config := &aws.Config{}
@@ -101,35 +97,30 @@ func main() {
 		os.Exit(0)
 	}
 
-	_, autojump := flags["--auto-jump"]
 	candidate := candidates[0]
-	if !autojump || len(candidates) > 1 {
+	if !*autoJump || len(candidates) > 1 {
 		candidate = chooseCandidate(candidates)
 	}
 
-	bastionUser := defaultBastionUserName
-	if val, ok := flags["--bastion-user"]; ok {
-		bastionUser = val
+	var sshClient *sshForwardingClient
+	if *instanceUser != "" {
+		sshClient, err = newTunnelledSSHClient(*bastionUser, *instanceUser, candidate.Bastion.PublicIP, candidate.Instance.PrivateIP)
+		if err != nil {
+			handleError(err)
+		}
+	} else {
+		sshClient, err = newTunnelledSSHClient(*bastionUser, UbuntuUser, candidate.Bastion.PublicIP, candidate.Instance.PrivateIP)
+		if err != nil {
+			fmt.Printf("[+] connection failed: %s\n", err)
+			sshClient, err = newTunnelledSSHClient(*bastionUser, DebianUser, candidate.Bastion.PublicIP, candidate.Instance.PrivateIP)
+			if err != nil {
+				handleError(err)
+			}
+		}
 	}
-
-	instanceUser := defaultSSHUserName
-	if val, ok := flags["--instance-user"]; ok {
-		instanceUser = val
-	}
-
-	fmt.Printf("jumping to %s (%s@%s) via %s (%s@%s)\n\n", candidate.Instance.Name, instanceUser, candidate.Instance.PrivateIP, candidate.Bastion.Name, bastionUser, candidate.Bastion.PublicIP)
-
-	sshClient, err := newTunnelledSSHClient(bastionUser, instanceUser, candidate.Bastion.PublicIP, candidate.Instance.PrivateIP)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s\n", err)
-		os.Exit(1)
-	}
-
+	fmt.Printf("[+] connected to %s\n\n", candidate.Instance.PrivateIP)
 	err = Shell(sshClient)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s\n", err)
-		os.Exit(1)
-	}
+	handleError(err)
 }
 
 // Prompts the user to choose which target to SSH into
@@ -145,18 +136,18 @@ func chooseCandidate(candidates []*instancePair) *instancePair {
 		fmt.Printf("%3d. %-19s %s %-15s %s\n", idx+1, c.Instance.ID, padToLen(c.Instance.Name, " ", longestName), c.Instance.PrivateIP, c.Instance.LaunchTime.Local().Format("2006-01-02 15:04"))
 	}
 
-	fmt.Print("pick server # and then [enter] to continue: ")
+	fmt.Print("[?] Pick instance # and then [enter] to continue: ")
 
 	reader := bufio.NewReader(os.Stdin)
 	serverIndex, _ := reader.ReadString('\n')
 
 	id, err := strconv.Atoi(strings.Replace(serverIndex, "\n", "", 1))
 	if err != nil {
-		fmt.Println("I cannot do that Dave.")
+		fmt.Println("[!] I cannot do that Dave.")
 		os.Exit(1)
 	}
 	if id < 1 || id > len(candidates) {
-		fmt.Println("I cannot do that Dave.")
+		fmt.Println("[!] I cannot do that Dave.")
 		os.Exit(1)
 	}
 	id--
@@ -325,6 +316,13 @@ func newInstance(inst *ec2.Instance) *instance {
 
 func printUsageAndQuit(exitCode int) {
 	fmt.Printf("salio - ssh proxy (%s)\n", version)
-	fmt.Println("usage: salio [--auto-jump true] [--bastion-user admin] [--instance-user admin] -p playpen -r ap-southeast-2 cluster stack env")
+	flag.Usage()
 	os.Exit(exitCode)
+}
+
+func handleError(err error) {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
 }

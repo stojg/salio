@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"strconv"
@@ -12,9 +13,10 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 )
 
-func newTunnelledSSHClient(tunnelUser, targetUser, tunnelAddress, targetAddress string) (*sshForwardingClient, error) {
-	tunnelAddress = maybeAddDefaultPort(tunnelAddress)
-	targetAddress = maybeAddDefaultPort(targetAddress)
+func newTunnelledSSHClient(bastionUser, instanceUser, bastionAddress, instanceAddress string) (*sshForwardingClient, error) {
+	fmt.Printf("[+] trying %s@%s via %s@%s\n", instanceUser, instanceAddress, bastionUser, bastionAddress)
+	bastionAddress = maybeAddDefaultPort(bastionAddress)
+	instanceAddress = maybeAddDefaultPort(instanceAddress)
 
 	agentClient, err := sshAgentClient()
 	if err != nil {
@@ -27,7 +29,7 @@ func newTunnelledSSHClient(tunnelUser, targetUser, tunnelAddress, targetAddress 
 	}
 
 	clientConfig := &ssh.ClientConfig{
-		User: tunnelUser,
+		User: bastionUser,
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(signers...),
 		},
@@ -37,7 +39,7 @@ func newTunnelledSSHClient(tunnelUser, targetUser, tunnelAddress, targetAddress 
 	var tunnelClient *ssh.Client
 	dialFunc := func(echan chan error) {
 		var err error
-		tunnelClient, err = ssh.Dial("tcp", tunnelAddress, clientConfig)
+		tunnelClient, err = ssh.Dial("tcp", bastionAddress, clientConfig)
 		echan <- err
 	}
 	if err = timeoutSSHDial(dialFunc); err != nil {
@@ -46,7 +48,7 @@ func newTunnelledSSHClient(tunnelUser, targetUser, tunnelAddress, targetAddress 
 
 	var targetConn net.Conn
 	dialFunc = func(echan chan error) {
-		tgtTCPAddr, err := net.ResolveTCPAddr("tcp", targetAddress)
+		tgtTCPAddr, err := net.ResolveTCPAddr("tcp", instanceAddress)
 		if err != nil {
 			echan <- err
 			return
@@ -58,9 +60,15 @@ func newTunnelledSSHClient(tunnelUser, targetUser, tunnelAddress, targetAddress 
 		return nil, err
 	}
 
-	clientConfig.User = targetUser
-
-	conn, chans, reqs, err := ssh.NewClientConn(targetConn, targetAddress, clientConfig)
+	instanceConfig := &ssh.ClientConfig{
+		User: instanceUser,
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(signers...),
+		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+	}
+	instanceConfig.User = instanceUser
+	conn, chans, reqs, err := ssh.NewClientConn(targetConn, instanceAddress, instanceConfig)
 	if err != nil {
 		return nil, err
 	}
