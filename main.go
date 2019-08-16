@@ -19,7 +19,7 @@ import (
 
 const (
 	defaultBastionUserName = "ubuntu"
-	defaultSSHUserName     = "admin"
+	defaultSSHUserName     = "ubuntu"
 )
 
 var (
