@@ -49,10 +49,10 @@ func Shell(client *sshForwardingClient) error {
 func makeSession(client *sshForwardingClient) (session *ssh.Session, finalize func(), err error) {
 	session, err = client.NewSession()
 	if err != nil {
-		return
+		return session, finalize, err
 	}
 	if err = client.ForwardAgentAuthentication(session); err != nil {
-		return
+		return session, finalize, err
 	}
 	session.Stdout = os.Stdout
 	session.Stderr = os.Stderr
@@ -66,7 +66,6 @@ func makeSession(client *sshForwardingClient) (session *ssh.Session, finalize fu
 
 	fd := int(os.Stdin.Fd())
 	if terminal.IsTerminal(fd) {
-
 		var termWidth, termHeight int
 		var oldState *terminal.State
 
